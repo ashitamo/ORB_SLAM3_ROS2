@@ -17,6 +17,12 @@
 
 #include "utility.hpp"
 
+#include <atomic>
+#include <cstdint>
+#include <thread>
+#include <mutex>
+#include <queue>
+
 class StereoSlamNode : public rclcpp::Node
 {
 public:

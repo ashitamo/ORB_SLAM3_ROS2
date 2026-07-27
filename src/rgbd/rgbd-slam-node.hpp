@@ -1,49 +1,66 @@
-#ifndef __RGBD_SLAM_NODE_HPP__
-#define __RGBD_SLAM_NODE_HPP__
-
-#include <iostream>
-#include <algorithm>
-#include <fstream>
-#include <chrono>
+#ifndef RGBD_SLAM_NODE_HPP_
+#define RGBD_SLAM_NODE_HPP_
 
 #include "rclcpp/rclcpp.hpp"
 #include "sensor_msgs/msg/image.hpp"
-
-#include "message_filters/subscriber.h"
-#include "message_filters/synchronizer.h"
-#include "message_filters/sync_policies/approximate_time.h"
-
-#include <cv_bridge/cv_bridge.h>
+#include "cv_bridge/cv_bridge.h"
 
 #include "System.h"
-#include "Frame.h"
-#include "Map.h"
-#include "Tracking.h"
-
 #include "utility.hpp"
+
+#include <opencv2/core/core.hpp>
+
+#include <atomic>
+#include <cstdint>
+#include <memory>
+#include <mutex>
+#include <queue>
+#include <thread>
+
+using ImageMsg = sensor_msgs::msg::Image;
 
 class RgbdSlamNode : public rclcpp::Node
 {
 public:
-    RgbdSlamNode(ORB_SLAM3::System* pSLAM);
-
-    ~RgbdSlamNode();
+    explicit RgbdSlamNode(ORB_SLAM3::System* pSLAM);
+    ~RgbdSlamNode() override;
 
 private:
-    using ImageMsg = sensor_msgs::msg::Image;
-    typedef message_filters::sync_policies::ApproximateTime<sensor_msgs::msg::Image, sensor_msgs::msg::Image> approximate_sync_policy;
+    void GrabRGB(const ImageMsg::SharedPtr msg);
+    void GrabDepth(const ImageMsg::SharedPtr msg);
 
-    void GrabRGBD(const sensor_msgs::msg::Image::SharedPtr msgRGB, const sensor_msgs::msg::Image::SharedPtr msgD);
+    void SyncRGBD();
 
-    ORB_SLAM3::System* m_SLAM;
+    cv::Mat GetIntensityImage(
+        const ImageMsg::SharedPtr& msg);
 
-    cv_bridge::CvImageConstPtr cv_ptrRGB;
-    cv_bridge::CvImageConstPtr cv_ptrD;
+    cv::Mat GetDepthImage(
+        const ImageMsg::SharedPtr& msg);
 
-    std::shared_ptr<message_filters::Subscriber<sensor_msgs::msg::Image> > rgb_sub;
-    std::shared_ptr<message_filters::Subscriber<sensor_msgs::msg::Image> > depth_sub;
+private:
+    ORB_SLAM3::System* m_SLAM = nullptr;
 
-    std::shared_ptr<message_filters::Synchronizer<approximate_sync_policy> > syncApproximate;
+
+
+    rclcpp::Subscription<ImageMsg>::SharedPtr subRgb_;
+    rclcpp::Subscription<ImageMsg>::SharedPtr subDepth_;
+
+    std::queue<ImageMsg::SharedPtr> rgbBuf_;
+    std::queue<ImageMsg::SharedPtr> depthBuf_;
+
+    std::mutex rgbMutex_;
+    std::mutex depthMutex_;
+
+    std::thread* syncThread_ = nullptr;
+    std::atomic<bool> stopRequested_{false};
+
+    double lastRgbStamp_ = -1.0;
+    double lastDepthStamp_ = -1.0;
+    double lastTrackedStamp_ = -1.0;
+
+    std::uint64_t rgbReceivedCount_ = 0;
+    std::uint64_t depthReceivedCount_ = 0;
+    std::uint64_t trackedCount_ = 0;
 };
 
-#endif
+#endif  // RGBD_SLAM_NODE_HPP_

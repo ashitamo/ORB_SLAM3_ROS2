@@ -14,6 +14,9 @@
 
 #include "utility.hpp"
 
+#include <atomic>
+#include <cstdint>
+
 using ImuMsg = sensor_msgs::msg::Imu;
 using ImageMsg = sensor_msgs::msg::Image;
 
@@ -41,6 +44,9 @@ private:
     queue<ImuMsg::SharedPtr> imuBuf_;
     std::mutex bufMutex_;
 
+    ImuMsg::SharedPtr lastImuMsg_;
+    double lastTrackedImageTime_ = -1.0;
+
     // Image
     queue<ImageMsg::SharedPtr> imgLeftBuf_, imgRightBuf_;
     std::mutex bufMutexLeft_, bufMutexRight_;
@@ -51,6 +57,13 @@ private:
 
     bool bClahe_;
     cv::Ptr<cv::CLAHE> clahe_ = cv::createCLAHE(3.0, cv::Size(8, 8));
+
+    // 影像接收診斷
+    std::atomic<std::uint64_t> leftReceivedCount_{0};
+    std::atomic<std::uint64_t> rightReceivedCount_{0};
+
+    double lastLeftStamp_ = -1.0;
+    double lastRightStamp_ = -1.0;
 };
 
 #endif
