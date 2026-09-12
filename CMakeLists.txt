@@ -1,9 +1,6 @@
 cmake_minimum_required(VERSION 3.5)
 project(orbslam3)
 
-# You should set the PYTHONPATH to your own python site-packages path
-set(ENV{PYTHONPATH} "/opt/ros/humble/lib/python3.10/site-packages/")
-
 set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} ${CMAKE_CURRENT_SOURCE_DIR}/CMakeModules)
 
 # Default to C++17
@@ -24,6 +21,9 @@ find_package(Sophus REQUIRED)
 find_package(Pangolin REQUIRED)
 find_package(ORB_SLAM3 REQUIRED)
 find_package(OpenCV REQUIRED COMPONENTS core imgproc imgcodecs calib3d)
+find_package(geometry_msgs REQUIRED)
+find_package(nav_msgs REQUIRED)
+find_package(tf2_ros REQUIRED)
 
 include_directories(
   include
@@ -49,12 +49,14 @@ add_executable(rgbd
   src/rgbd/rgbd.cpp
   src/rgbd/rgbd-slam-node.cpp
 )
+target_compile_definitions(rgbd PRIVATE ORB_SLAM3_ROS2_CONFIG_DIR="${CMAKE_CURRENT_SOURCE_DIR}/config")
 ament_target_dependencies(rgbd rclcpp sensor_msgs cv_bridge message_filters ORB_SLAM3 Pangolin)
 
 add_executable(stereo
   src/stereo/stereo.cpp
   src/stereo/stereo-slam-node.cpp
 )
+target_compile_definitions(stereo PRIVATE ORB_SLAM3_ROS2_CONFIG_DIR="${CMAKE_CURRENT_SOURCE_DIR}/config")
 ament_target_dependencies(stereo rclcpp sensor_msgs cv_bridge message_filters
 ORB_SLAM3 Pangolin)
 
@@ -76,6 +78,7 @@ add_executable(rgbd-inertial
   src/rgbd-inertial/rgbd-inertial.cpp
   src/rgbd-inertial/rgbd-inertial-node.cpp
 )
+target_compile_definitions(rgbd-inertial PRIVATE ORB_SLAM3_ROS2_CONFIG_DIR="${CMAKE_CURRENT_SOURCE_DIR}/config")
 
 ament_target_dependencies(
   rgbd-inertial
@@ -84,6 +87,9 @@ ament_target_dependencies(
   cv_bridge
   ORB_SLAM3
   Pangolin
+  geometry_msgs
+  nav_msgs
+  tf2_ros
 )
 
 install(

@@ -5,6 +5,12 @@
 
 #include "sensor_msgs/msg/image.hpp"
 #include "sensor_msgs/msg/imu.hpp"
+#include <geometry_msgs/msg/pose_stamped.hpp>
+#include <geometry_msgs/msg/transform_stamped.hpp>
+#include <tf2_ros/transform_broadcaster.h>
+#include <builtin_interfaces/msg/time.hpp>
+#include <nav_msgs/msg/odometry.hpp>
+#include <string>
 
 #include "cv_bridge/cv_bridge.h"
 
@@ -12,6 +18,7 @@
 #include "utility.hpp"
 
 #include <opencv2/core/core.hpp>
+
 
 #include <atomic>
 #include <cstdint>
@@ -23,6 +30,10 @@
 
 using ImageMsg = sensor_msgs::msg::Image;
 using ImuMsg = sensor_msgs::msg::Imu;
+using PoseStampedMsg = geometry_msgs::msg::PoseStamped;
+using OdometryMsg = nav_msgs::msg::Odometry;
+using TransformStampedMsg = geometry_msgs::msg::TransformStamped;
+
 
 class RgbdInertialNode : public rclcpp::Node
 {
@@ -46,6 +57,18 @@ private:
 
     void GrabImu(
         const ImuMsg::SharedPtr msg);
+
+    void PublishPose(
+        const Sophus::SE3f& Tcw,
+        const builtin_interfaces::msg::Time& imageStamp);
+
+    void PublishOdometry(
+        const Sophus::SE3f& Tcw,
+        const builtin_interfaces::msg::Time& imageStamp);
+
+    void PublishTransform(
+        const Sophus::SE3f& Tcw,
+        const builtin_interfaces::msg::Time& imageStamp);
 
     /*
      * RGB-D-IMU 同步執行緒
@@ -81,12 +104,18 @@ private:
     rclcpp::Subscription<ImageMsg>::SharedPtr subDepth_;
     rclcpp::Subscription<ImuMsg>::SharedPtr subImu_;
 
+    rclcpp::Publisher<PoseStampedMsg>::SharedPtr posePublisher_;
+    rclcpp::Publisher<OdometryMsg>::SharedPtr odometryPublisher_;
+
+    std::unique_ptr<tf2_ros::TransformBroadcaster>transformBroadcaster_;
+
     /*
      * Input queues
      */
     std::queue<ImageMsg::SharedPtr> rgbBuf_;
     std::queue<ImageMsg::SharedPtr> depthBuf_;
     std::queue<ImuMsg::SharedPtr> imuBuf_;
+    
 
     /*
      * Queue mutexes
@@ -125,6 +154,13 @@ private:
      */
     cv::Mat maskRgbd_;
     bool useMask_ = false;
+
+    bool publishPose_ = true;
+    bool publishOdometry_ = true;
+    bool publishTf_ = true;
+
+    std::string mapFrameId_ = "map";
+    std::string cameraFrameId_ = "camera_infra1_optical_frame";
 };
 
 #endif  // RGBD_INERTIAL_NODE_HPP_

@@ -181,7 +181,7 @@ source /opt/ros/humble/setup.bash
 目前 ORB-SLAM3 core 位於：
 
 ```text
-/home/lab606/slam_ws/src/ORB_SLAM3
+/home/lab606/umi_ORB_SLAM3/core_ws/src/ORB_SLAM3
 ```
 
 ✅ 目前已可正常編譯並產生 ORB-SLAM3 library。  
@@ -190,7 +190,7 @@ source /opt/ros/humble/setup.bash
 建議封版前記錄：
 
 ```bash
-cd /home/lab606/slam_ws/src/ORB_SLAM3
+cd /home/lab606/umi_ORB_SLAM3/core_ws/src/ORB_SLAM3
 git rev-parse HEAD
 git status
 ```
@@ -313,8 +313,8 @@ source /opt/ros/humble/setup.bash
 source ~/orbslam3_ros2_ws/install/setup.bash
 
 ros2 run orbslam3 rgbd-inertial \
-  /home/lab606/slam_ws/src/ORB_SLAM3/Vocabulary/ORBvoc.txt \
-  /home/lab606/slam_ws/src/ORB_SLAM3/Examples/RGB-D-Inertial/D405_rgbd_inertial_test.yaml \
+  /home/lab606/umi_ORB_SLAM3/core_ws/src/ORB_SLAM3/Vocabulary/ORBvoc.txt \
+  /home/lab606/umi_ORB_SLAM3/core_ws/src/ORB_SLAM3/Examples/RGB-D-Inertial/D405_rgbd_inertial_test.yaml \
   true \
   --ros-args \
   -p imu_time_offset_sec:=0.0 \
@@ -342,8 +342,8 @@ mkdir -p ~/orbslam3_logs
 LOG=~/orbslam3_logs/rgbd_imu_$(date +%Y%m%d_%H%M%S).log
 
 ros2 run orbslam3 rgbd-inertial \
-  /home/lab606/slam_ws/src/ORB_SLAM3/Vocabulary/ORBvoc.txt \
-  /home/lab606/slam_ws/src/ORB_SLAM3/Examples/RGB-D-Inertial/D405_rgbd_inertial_test.yaml \
+  /home/lab606/umi_ORB_SLAM3/core_ws/src/ORB_SLAM3/Vocabulary/ORBvoc.txt \
+  /home/lab606/umi_ORB_SLAM3/core_ws/src/ORB_SLAM3/Examples/RGB-D-Inertial/D405_rgbd_inertial_test.yaml \
   true \
   --ros-args \
   -p imu_time_offset_sec:=0.0 \
@@ -994,7 +994,7 @@ d405_infra_depth_imu_v0.1
 保存並提交：
 
 ```bash
-cd /home/lab606/slam_ws/src/ORB_SLAM3
+cd /home/lab606/umi_ORB_SLAM3/core_ws/src/ORB_SLAM3
 git status
 git rev-parse HEAD
 git add .
@@ -1006,7 +1006,7 @@ git tag -a d405_infra_depth_imu_v0.1 \
 ROS 2 wrapper 也要獨立 commit/tag：
 
 ```bash
-cd /home/lab606/orbslam3_ros2_ws/src/ORB_SLAM3_ROS2
+cd /home/lab606/umi_ORB_SLAM3/ros2_ws/src/ORB_SLAM3_ROS2
 git status
 git rev-parse HEAD
 ```

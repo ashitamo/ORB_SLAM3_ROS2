@@ -5,9 +5,20 @@
 #
 # To help the search ORB_SLAM3_ROOT_DIR environment variable as the path to ORB_SLAM3 root folder
 #  e.g. `set( ORB_SLAM3_ROOT_DIR=~/ORB_SLAM3) `
-set(ORB_SLAM3_ROOT_DIR "/home/lab606/slam_ws/src/ORB_SLAM3")
+if(NOT ORB_SLAM3_ROOT_DIR)
+  if(DEFINED ENV{ORB_SLAM3_ROOT_DIR})
+    set(ORB_SLAM3_ROOT_DIR "$ENV{ORB_SLAM3_ROOT_DIR}")
+  else()
+    get_filename_component(
+      ORB_SLAM3_ROOT_DIR
+      "${CMAKE_CURRENT_LIST_DIR}/../../../../core_ws/src/ORB_SLAM3"
+      ABSOLUTE
+    )
+  endif()
+endif()
+set(ORB_SLAM3_ROOT_DIR "${ORB_SLAM3_ROOT_DIR}" CACHE PATH "ORB-SLAM3 source root")
 
-# message(${ORB_SLAM3_ROOT_DIR})
+message(${ORB_SLAM3_ROOT_DIR})
 # message(${ORB_SLAM3_ROOT_DIR}/include)
 # message(${ORB_SLAM3_ROOT_DIR}/Thirdparty/DBoW2/DBoW2)
 

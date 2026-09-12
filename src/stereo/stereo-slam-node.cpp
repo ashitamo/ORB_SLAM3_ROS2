@@ -56,11 +56,9 @@ StereoSlamNode::StereoSlamNode(ORB_SLAM3::System* pSLAM, const string &strSettin
         cv::initUndistortRectifyMap(K_l,D_l,R_l,P_l.rowRange(0,3).colRange(0,3),cv::Size(cols_l,rows_l),CV_32F,M1l,M2l);
         cv::initUndistortRectifyMap(K_r,D_r,R_r,P_r.rowRange(0,3).colRange(0,3),cv::Size(cols_r,rows_r),CV_32F,M1r,M2r);
     }
-    const std::string mask_left_path =
-        "/home/lab606/orbslam3_ros2_ws/src/ORB_SLAM3_ROS2/config/mask_left.png";
+    const std::string mask_left_path = ORB_SLAM3_ROS2_CONFIG_DIR "/mask_left.png";
 
-    const std::string mask_right_path =
-        "/home/lab606/orbslam3_ros2_ws/src/ORB_SLAM3_ROS2/config/mask_right.png";
+    const std::string mask_right_path = ORB_SLAM3_ROS2_CONFIG_DIR "/mask_right.png";
 
     g_mask_left = cv::imread(mask_left_path, cv::IMREAD_GRAYSCALE);
     g_mask_right = cv::imread(mask_right_path, cv::IMREAD_GRAYSCALE);

@@ -23,8 +23,7 @@ bool g_use_rgbd_mask = false;
 
 RgbdSlamNode::RgbdSlamNode(ORB_SLAM3::System* pSLAM): Node("ORB_SLAM3_ROS2"), m_SLAM(pSLAM)
 {
-    const std::string maskPath =
-        "/home/lab606/orbslam3_ros2_ws/src/ORB_SLAM3_ROS2/config/mask_left.png";
+    const std::string maskPath = ORB_SLAM3_ROS2_CONFIG_DIR "/mask_left.png";
 
     g_mask_rgbd =
         cv::imread(

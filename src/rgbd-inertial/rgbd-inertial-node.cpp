@@ -1,4 +1,5 @@
 #include "rgbd-inertial-node.hpp"
+#include "Tracking.h"
 
 #include <sensor_msgs/image_encodings.hpp>
 
@@ -21,10 +22,7 @@ namespace
 constexpr std::size_t kImageQueueLimit = 10;
 constexpr std::size_t kImuQueueLimit = 2000;
 
-const char* kMaskPath =
-    "/home/lab606/orbslam3_ros2_ws/"
-    "src/ORB_SLAM3_ROS2/config/mask_left.png";
-
+const char* kMaskPath = ORB_SLAM3_ROS2_CONFIG_DIR "/mask_left.png";
 }  // namespace
 
 
@@ -37,6 +35,79 @@ RgbdInertialNode::RgbdInertialNode(
         this->declare_parameter<double>(
             "imu_time_offset_sec",
             0.0);
+
+    publishPose_ =
+        this->declare_parameter<bool>(
+            "publish_pose",
+            true);
+
+    publishOdometry_ =
+        this->declare_parameter<bool>(
+            "publish_odometry",
+            true);
+    
+    publishTf_ =
+        this->declare_parameter<bool>(
+            "publish_tf",
+            true);
+
+    mapFrameId_ =
+        this->declare_parameter<std::string>(
+            "map_frame_id",
+            "map");
+
+    cameraFrameId_ =
+        this->declare_parameter<std::string>(
+            "camera_frame_id",
+            "camera_infra1_optical_frame");
+    
+    if (publishPose_)
+    {
+        posePublisher_ =
+            this->create_publisher<PoseStampedMsg>(
+                "/orbslam3/pose",
+                rclcpp::QoS(
+                    rclcpp::KeepLast(10))
+                    .reliable()
+                    .durability_volatile());
+
+        RCLCPP_INFO(
+            this->get_logger(),
+            "Pose publisher enabled: topic=/orbslam3/pose frame=%s child=%s",
+            mapFrameId_.c_str(),
+            cameraFrameId_.c_str());
+    }
+    if (publishOdometry_)
+    {
+        odometryPublisher_ =
+            this->create_publisher<OdometryMsg>(
+                "/orbslam3/map_odometry",
+                rclcpp::QoS(
+                    rclcpp::KeepLast(10))
+                    .reliable()
+                    .durability_volatile());
+
+        RCLCPP_INFO(
+            this->get_logger(),
+            "Odometry publisher enabled: "
+            "topic=/orbslam3/map_odometry "
+            "frame=%s child=%s",
+            mapFrameId_.c_str(),
+            cameraFrameId_.c_str());
+    }
+    if (publishTf_)
+    {
+        transformBroadcaster_ =
+            std::make_unique<
+                tf2_ros::TransformBroadcaster>(
+                    *this);
+
+        RCLCPP_INFO(
+            this->get_logger(),
+            "TF broadcaster enabled: %s -> %s",
+            mapFrameId_.c_str(),
+            cameraFrameId_.c_str());
+    }
 
     RCLCPP_INFO(
         this->get_logger(),
@@ -171,6 +242,267 @@ void RgbdInertialNode::Stop()
     {
         syncThread_.join();
     }
+}
+
+void RgbdInertialNode::PublishPose(
+    const Sophus::SE3f& Tcw,
+    const builtin_interfaces::msg::Time& imageStamp)
+{
+    if (!publishPose_ ||
+        !posePublisher_)
+    {
+        return;
+    }
+
+    /*
+     * ORB-SLAM3 回傳的是 Tcw：
+     * world/map -> camera
+     *
+     * ROS PoseStamped 需要 camera pose in map，
+     * 因此取反得到 Twc。
+     */
+    const Sophus::SE3f Twc =
+        Tcw.inverse();
+
+    const Eigen::Vector3f translation =
+        Twc.translation();
+
+    Eigen::Quaternionf quaternion =
+        Twc.unit_quaternion();
+
+    quaternion.normalize();
+
+    if (!translation.allFinite() ||
+        !std::isfinite(quaternion.x()) ||
+        !std::isfinite(quaternion.y()) ||
+        !std::isfinite(quaternion.z()) ||
+        !std::isfinite(quaternion.w()))
+    {
+        RCLCPP_ERROR(
+            this->get_logger(),
+            "Rejected non-finite SLAM pose");
+
+        return;
+    }
+
+    PoseStampedMsg poseMsg;
+
+    poseMsg.header.stamp =
+        imageStamp;
+
+    poseMsg.header.frame_id =
+        mapFrameId_;
+
+    poseMsg.pose.position.x =
+        static_cast<double>(
+            translation.x());
+
+    poseMsg.pose.position.y =
+        static_cast<double>(
+            translation.y());
+
+    poseMsg.pose.position.z =
+        static_cast<double>(
+            translation.z());
+
+    poseMsg.pose.orientation.x =
+        static_cast<double>(
+            quaternion.x());
+
+    poseMsg.pose.orientation.y =
+        static_cast<double>(
+            quaternion.y());
+
+    poseMsg.pose.orientation.z =
+        static_cast<double>(
+            quaternion.z());
+
+    poseMsg.pose.orientation.w =
+        static_cast<double>(
+            quaternion.w());
+
+    posePublisher_->publish(
+        poseMsg);
+}
+
+void RgbdInertialNode::PublishOdometry(
+    const Sophus::SE3f& Tcw,
+    const builtin_interfaces::msg::Time& imageStamp)
+{
+    if (!publishOdometry_ ||
+        !odometryPublisher_)
+    {
+        return;
+    }
+
+    /*
+     * ORB-SLAM3 回傳 Tcw：
+     * map/world -> camera
+     *
+     * Odometry 要表達 camera 在 map 中的 pose，
+     * 因此使用 Twc。
+     */
+    const Sophus::SE3f Twc =
+        Tcw.inverse();
+
+    const Eigen::Vector3f translation =
+        Twc.translation();
+
+    Eigen::Quaternionf quaternion =
+        Twc.unit_quaternion();
+
+    quaternion.normalize();
+
+    if (!translation.allFinite() ||
+        !std::isfinite(quaternion.x()) ||
+        !std::isfinite(quaternion.y()) ||
+        !std::isfinite(quaternion.z()) ||
+        !std::isfinite(quaternion.w()))
+    {
+        RCLCPP_ERROR(
+            this->get_logger(),
+            "Rejected non-finite SLAM odometry");
+
+        return;
+    }
+
+    OdometryMsg odometryMsg;
+
+    /*
+     * 與 PoseStamped 使用完全相同的
+     * infra1 image timestamp。
+     */
+    odometryMsg.header.stamp =
+        imageStamp;
+
+    odometryMsg.header.frame_id =
+        mapFrameId_;
+
+    odometryMsg.child_frame_id =
+        cameraFrameId_;
+
+    odometryMsg.pose.pose.position.x =
+        static_cast<double>(
+            translation.x());
+
+    odometryMsg.pose.pose.position.y =
+        static_cast<double>(
+            translation.y());
+
+    odometryMsg.pose.pose.position.z =
+        static_cast<double>(
+            translation.z());
+
+    odometryMsg.pose.pose.orientation.x =
+        static_cast<double>(
+            quaternion.x());
+
+    odometryMsg.pose.pose.orientation.y =
+        static_cast<double>(
+            quaternion.y());
+
+    odometryMsg.pose.pose.orientation.z =
+        static_cast<double>(
+            quaternion.z());
+
+    odometryMsg.pose.pose.orientation.w =
+        static_cast<double>(
+            quaternion.w());
+
+    /*
+     * 第一版尚未計算線速度、角速度與 covariance。
+     * ROS message 預設值為 0，因此先不填。
+     *
+     * 注意：0 covariance 在語意上不代表真正已知為零，
+     * 之後接 robot_localization 前必須重新設計。
+     */
+
+    odometryPublisher_->publish(
+        odometryMsg);
+}
+
+void RgbdInertialNode::PublishTransform(
+    const Sophus::SE3f& Tcw,
+    const builtin_interfaces::msg::Time& imageStamp)
+{
+    if (!publishTf_ ||
+        !transformBroadcaster_)
+    {
+        return;
+    }
+
+    /*
+     * ORB-SLAM3 回傳 Tcw：
+     * map/world -> camera
+     *
+     * TF map -> camera 要使用
+     * camera 在 map 中的姿態 Twc。
+     */
+    const Sophus::SE3f Twc =
+        Tcw.inverse();
+
+    const Eigen::Vector3f translation =
+        Twc.translation();
+
+    Eigen::Quaternionf quaternion =
+        Twc.unit_quaternion();
+
+    quaternion.normalize();
+
+    if (!translation.allFinite() ||
+        !std::isfinite(quaternion.x()) ||
+        !std::isfinite(quaternion.y()) ||
+        !std::isfinite(quaternion.z()) ||
+        !std::isfinite(quaternion.w()))
+    {
+        RCLCPP_ERROR(
+            this->get_logger(),
+            "Rejected non-finite SLAM transform");
+
+        return;
+    }
+
+    TransformStampedMsg transformMsg;
+
+    transformMsg.header.stamp =
+        imageStamp;
+
+    transformMsg.header.frame_id =
+        mapFrameId_;
+
+    transformMsg.child_frame_id =
+        cameraFrameId_;
+
+    transformMsg.transform.translation.x =
+        static_cast<double>(
+            translation.x());
+
+    transformMsg.transform.translation.y =
+        static_cast<double>(
+            translation.y());
+
+    transformMsg.transform.translation.z =
+        static_cast<double>(
+            translation.z());
+
+    transformMsg.transform.rotation.x =
+        static_cast<double>(
+            quaternion.x());
+
+    transformMsg.transform.rotation.y =
+        static_cast<double>(
+            quaternion.y());
+
+    transformMsg.transform.rotation.z =
+        static_cast<double>(
+            quaternion.z());
+
+    transformMsg.transform.rotation.w =
+        static_cast<double>(
+            quaternion.w());
+
+    transformBroadcaster_->sendTransform(
+        transformMsg);
 }
 
 RgbdInertialNode::~RgbdInertialNode()
@@ -1106,11 +1438,27 @@ void RgbdInertialNode::SyncRGBDWithImu()
          *
          * TrackRGBD(image, depth, timestamp, imuVector)
          */
-        SLAM_->TrackRGBD(
-            intensity,
-            depth,
-            rgbStamp,
-            vImuMeas);
+        const Sophus::SE3f Tcw =
+            SLAM_->TrackRGBD(
+                intensity,
+                depth,
+                rgbStamp,
+                vImuMeas);
+
+        const int trackingState =
+            SLAM_->GetTrackingState();
+
+        if (trackingState ==
+            ORB_SLAM3::Tracking::OK)
+        {
+            PublishPose(
+                Tcw,
+                rgbMsg->header.stamp);
+
+            PublishTransform(
+                Tcw,
+                rgbMsg->header.stamp);
+        }
 
         lastTrackedImageStamp_ =
             rgbStamp;
