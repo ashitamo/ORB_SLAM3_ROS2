@@ -106,13 +106,19 @@ StereoSlamNode::StereoSlamNode(ORB_SLAM3::System* pSLAM, const string &strSettin
             this->get_logger(),
             "Stereo masks loaded successfully.");
     }
+    auto image_qos = rclcpp::QoS(rclcpp::KeepLast(10));
+    image_qos.reliable();
+    image_qos.durability_volatile();
+
     left_sub = std::make_shared<message_filters::Subscriber<ImageMsg>>(
         this,
-        "/camera/camera/infra1/image_rect_raw");
+        "/camera/camera/infra1/image_rect_raw",
+        image_qos.get_rmw_qos_profile());
 
     right_sub = std::make_shared<message_filters::Subscriber<ImageMsg>>(
         this,
-        "/camera/camera/infra2/image_rect_raw");
+        "/camera/camera/infra2/image_rect_raw",
+        image_qos.get_rmw_qos_profile());
 
     syncApproximate = std::make_shared<message_filters::Synchronizer<approximate_sync_policy> >(approximate_sync_policy(10), *left_sub, *right_sub);
     syncApproximate->registerCallback(&StereoSlamNode::GrabStereo, this);

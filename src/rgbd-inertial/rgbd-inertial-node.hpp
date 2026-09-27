@@ -4,6 +4,7 @@
 #include "rclcpp/rclcpp.hpp"
 
 #include "sensor_msgs/msg/image.hpp"
+#include "sensor_msgs/msg/compressed_image.hpp"
 #include "sensor_msgs/msg/imu.hpp"
 #include <geometry_msgs/msg/pose_stamped.hpp>
 #include <geometry_msgs/msg/transform_stamped.hpp>
@@ -29,6 +30,7 @@
 #include <vector>
 
 using ImageMsg = sensor_msgs::msg::Image;
+using CompressedImageMsg = sensor_msgs::msg::CompressedImage;
 using ImuMsg = sensor_msgs::msg::Imu;
 using PoseStampedMsg = geometry_msgs::msg::PoseStamped;
 using OdometryMsg = nav_msgs::msg::Odometry;
@@ -44,8 +46,10 @@ public:
     ~RgbdInertialNode() override;
 
     void Stop();
+    bool HasTracked() const { return hasTracked_; }
 
 private:
+    bool hasTracked_ = false;
     /*
      * ROS callbacks
      */
@@ -54,6 +58,9 @@ private:
 
     void GrabDepth(
         const ImageMsg::SharedPtr msg);
+
+    void GrabCompressedDepth(
+        const CompressedImageMsg::SharedPtr msg);
 
     void GrabImu(
         const ImuMsg::SharedPtr msg);
@@ -102,6 +109,7 @@ private:
      */
     rclcpp::Subscription<ImageMsg>::SharedPtr subRgb_;
     rclcpp::Subscription<ImageMsg>::SharedPtr subDepth_;
+    rclcpp::Subscription<CompressedImageMsg>::SharedPtr subCompressedDepth_;
     rclcpp::Subscription<ImuMsg>::SharedPtr subImu_;
 
     rclcpp::Publisher<PoseStampedMsg>::SharedPtr posePublisher_;

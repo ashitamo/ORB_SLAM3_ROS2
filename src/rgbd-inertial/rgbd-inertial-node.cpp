@@ -7,10 +7,12 @@
 #include <opencv2/imgproc.hpp>
 
 #include <chrono>
+#include <algorithm>
 #include <cmath>
 #include <functional>
 #include <iomanip>
 #include <iostream>
+#include <iterator>
 #include <stdexcept>
 #include <thread>
 
@@ -21,6 +23,8 @@ namespace
 
 constexpr std::size_t kImageQueueLimit = 10;
 constexpr std::size_t kImuQueueLimit = 2000;
+constexpr unsigned char kPngSignature[] = {
+    0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a};
 
 const char* kMaskPath = ORB_SLAM3_ROS2_CONFIG_DIR "/mask_left.png";
 }  // namespace
@@ -60,7 +64,7 @@ RgbdInertialNode::RgbdInertialNode(
         this->declare_parameter<std::string>(
             "camera_frame_id",
             "camera_infra1_optical_frame");
-    
+
     if (publishPose_)
     {
         posePublisher_ =
@@ -201,14 +205,58 @@ RgbdInertialNode::RgbdInertialNode(
                 this,
                 _1));
 
-    subDepth_ =
-        this->create_subscription<ImageMsg>(
-            "camera/depth",
-            imageQos,
-            std::bind(
-                &RgbdInertialNode::GrabDepth,
-                this,
-                _1));
+    const std::string resolvedDepthTopic =
+        this->get_node_topics_interface()
+            ->resolve_topic_name("camera/depth");
+    bool useCompressedDepth =
+        resolvedDepthTopic.size() >= std::string("/compressedDepth").size() &&
+        resolvedDepthTopic.compare(
+            resolvedDepthTopic.size() - std::string("/compressedDepth").size(),
+            std::string("/compressedDepth").size(),
+            "/compressedDepth") == 0;
+    if (!useCompressedDepth)
+    {
+        for (const auto& endpoint :
+             this->get_publishers_info_by_topic(resolvedDepthTopic))
+        {
+            if (endpoint.topic_type() == "sensor_msgs/msg/CompressedImage")
+            {
+                useCompressedDepth = true;
+                break;
+            }
+        }
+    }
+
+    if (useCompressedDepth)
+    {
+        subCompressedDepth_ =
+            this->create_subscription<CompressedImageMsg>(
+                "camera/depth",
+                imageQos,
+                std::bind(
+                    &RgbdInertialNode::GrabCompressedDepth,
+                    this,
+                    _1));
+        RCLCPP_INFO(
+            this->get_logger(),
+            "Depth input auto-detected: sensor_msgs/CompressedImage on %s",
+            resolvedDepthTopic.c_str());
+    }
+    else
+    {
+        subDepth_ =
+            this->create_subscription<ImageMsg>(
+                "camera/depth",
+                imageQos,
+                std::bind(
+                    &RgbdInertialNode::GrabDepth,
+                    this,
+                    _1));
+        RCLCPP_INFO(
+            this->get_logger(),
+            "Depth input auto-detected: sensor_msgs/Image on %s",
+            resolvedDepthTopic.c_str());
+    }
 
     /*
      * IMU 使用 SensorDataQoS：
@@ -763,6 +811,62 @@ void RgbdInertialNode::GrabDepth(
     }
 
     depthBuf_.push(msg);
+}
+
+void RgbdInertialNode::GrabCompressedDepth(
+    const CompressedImageMsg::SharedPtr msg)
+{
+    if (!msg)
+    {
+        return;
+    }
+
+    if (msg->format.find("compressedDepth") == std::string::npos ||
+        msg->format.find("rvl") != std::string::npos ||
+        msg->format.rfind("32FC1", 0) == 0)
+    {
+        RCLCPP_ERROR(
+            this->get_logger(),
+            "Unsupported compressed depth format: %s; expected 16UC1 PNG compressedDepth",
+            msg->format.c_str());
+        return;
+    }
+
+    const auto pngBegin =
+        std::search(
+            msg->data.begin(),
+            msg->data.end(),
+            std::begin(kPngSignature),
+            std::end(kPngSignature));
+    if (pngBegin == msg->data.end())
+    {
+        RCLCPP_ERROR(
+            this->get_logger(),
+            "compressedDepth message has no PNG payload");
+        return;
+    }
+
+    const std::vector<unsigned char> pngData(
+        pngBegin,
+        msg->data.end());
+    const cv::Mat depth =
+        cv::imdecode(
+            pngData,
+            cv::IMREAD_UNCHANGED);
+    if (depth.empty() || depth.type() != CV_16UC1)
+    {
+        RCLCPP_ERROR(
+            this->get_logger(),
+            "Failed to decode 16UC1 compressedDepth PNG");
+        return;
+    }
+
+    auto rawMessage =
+        cv_bridge::CvImage(
+            msg->header,
+            sensor_msgs::image_encodings::TYPE_16UC1,
+            depth).toImageMsg();
+    GrabDepth(rawMessage);
 }
 
 void RgbdInertialNode::GrabImu(
@@ -1451,6 +1555,7 @@ void RgbdInertialNode::SyncRGBDWithImu()
         if (trackingState ==
             ORB_SLAM3::Tracking::OK)
         {
+            hasTracked_ = true;
             PublishPose(
                 Tcw,
                 rgbMsg->header.stamp);

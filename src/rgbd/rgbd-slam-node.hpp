@@ -3,6 +3,7 @@
 
 #include "rclcpp/rclcpp.hpp"
 #include "sensor_msgs/msg/image.hpp"
+#include "sensor_msgs/msg/compressed_image.hpp"
 #include "cv_bridge/cv_bridge.h"
 
 #include "System.h"
@@ -17,6 +18,7 @@
 #include <queue>
 #include <thread>
 
+using CompressedImageMsg = sensor_msgs::msg::CompressedImage;
 using ImageMsg = sensor_msgs::msg::Image;
 
 class RgbdSlamNode : public rclcpp::Node
@@ -24,8 +26,11 @@ class RgbdSlamNode : public rclcpp::Node
 public:
     explicit RgbdSlamNode(ORB_SLAM3::System* pSLAM);
     ~RgbdSlamNode() override;
+    void Stop();
+    bool HasTracked() const { return hasTracked_; }
 
 private:
+    void GrabCompressedDepth(const CompressedImageMsg::SharedPtr msg);
     void GrabRGB(const ImageMsg::SharedPtr msg);
     void GrabDepth(const ImageMsg::SharedPtr msg);
 
@@ -38,6 +43,8 @@ private:
         const ImageMsg::SharedPtr& msg);
 
 private:
+    bool hasTracked_ = false;
+    rclcpp::Subscription<CompressedImageMsg>::SharedPtr subCompressedDepth_;
     ORB_SLAM3::System* m_SLAM = nullptr;
 
 

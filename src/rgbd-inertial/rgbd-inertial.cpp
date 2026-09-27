@@ -1,6 +1,7 @@
 #include "rgbd-inertial-node.hpp"
 
 #include "System.h"
+#include "atlas_settings.hpp"
 
 #include <rclcpp/rclcpp.hpp>
 
@@ -39,18 +40,18 @@ void PrintUsage(const char* programName)
     std::cerr
         << "Usage:\n"
         << "  " << programName
-        << " vocabulary_file settings_file visualization\n\n"
+        << " vocabulary_file settings_file visualization camera_trajectory keyframe_trajectory\n\n"
         << "Example:\n"
         << "  " << programName
         << " /path/to/ORBvoc.txt"
         << " /path/to/D405_rgbd_inertial.yaml"
-        << " false"
+        << " false CameraTrajectory.txt KeyFrameTrajectory.txt"
         << std::endl;
 }
 
 }  // namespace
 
-int main(int argc, char** argv)
+int Run(int argc, char** argv)
 {
     rclcpp::init(argc, argv);
 
@@ -76,9 +77,16 @@ int main(int argc, char** argv)
     std::cout << "Camera trajectory: " << cameraTrajectoryPath << std::endl;
     std::cout << "Keyframe trajectory: " << keyFrameTrajectoryPath << std::endl;
 
+    AtlasSettings atlasSettings(settingsPath);
+    for (const auto& filename : {cameraTrajectoryPath, keyFrameTrajectoryPath})
+    {
+        const auto parent = std::filesystem::absolute(filename).parent_path();
+        std::filesystem::create_directories(parent);
+    }
+
     ORB_SLAM3::System SLAM(
         vocabularyPath,
-        settingsPath,
+        atlasSettings.path,
         ORB_SLAM3::System::IMU_RGBD,
         visualization
     );
@@ -95,10 +103,13 @@ int main(int argc, char** argv)
     std::cout << "Shutting down ORB-SLAM3..." << std::endl;
     SLAM.Shutdown();
 
+    bool trajectorySaved = false;
     try
     {
+        if (!node->HasTracked()) throw std::runtime_error("No successfully tracked frames; trajectory export skipped");
         SLAM.SaveTrajectoryTUM(cameraTrajectoryPath);
         SLAM.SaveKeyFrameTrajectoryTUM(keyFrameTrajectoryPath);
+        trajectorySaved = true;
 
         RCLCPP_INFO(node->get_logger(), "Camera trajectory saved to: %s", cameraTrajectoryPath.c_str());
         RCLCPP_INFO(node->get_logger(), "Keyframe trajectory saved to: %s", keyFrameTrajectoryPath.c_str());
@@ -114,5 +125,16 @@ int main(int argc, char** argv)
     std::cout << "ORB-SLAM3 shutdown completed." << std::endl;
     rclcpp::shutdown();
 
-    return 0;
+    return trajectorySaved ? 0 : 2;
+}
+
+int main(int argc, char** argv)
+{
+    try { return Run(argc, argv); }
+    catch (const std::exception& error)
+    {
+        std::cerr << error.what() << std::endl;
+        if (rclcpp::ok()) rclcpp::shutdown();
+        return 1;
+    }
 }

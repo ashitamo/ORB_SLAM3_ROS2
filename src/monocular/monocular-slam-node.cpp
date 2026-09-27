@@ -9,9 +9,12 @@ MonocularSlamNode::MonocularSlamNode(ORB_SLAM3::System* pSLAM)
 {
     m_SLAM = pSLAM;
     // std::cout << "slam changed" << std::endl;
+    auto image_qos = rclcpp::QoS(rclcpp::KeepLast(10));
+    image_qos.reliable();
+    image_qos.durability_volatile();
     m_image_subscriber = this->create_subscription<ImageMsg>(
         "camera",
-        10,
+        image_qos,
         std::bind(&MonocularSlamNode::GrabImage, this, std::placeholders::_1));
     std::cout << "slam changed" << std::endl;
 }
